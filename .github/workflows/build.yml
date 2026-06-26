@@ -27,10 +27,19 @@ jobs:
         with:
           gradle-version: '8.6'
 
-      # DEBUG build sa automaticky podpíše Android debug keystore-om,
-      # ktorý sa vygeneruje automaticky počas buildu. Tento podpis
-      # Android telefón vždy akceptuje — žiadne "interná chyba" pri instalácii.
-      # (RELEASE build by bol nepodpísaný a Android by ho odmietol.)
+      - name: Create debug keystore
+        run: |
+          mkdir -p ~/.android
+          keytool -genkey -v \
+            -keystore ~/.android/debug.keystore \
+            -storepass android \
+            -alias androiddebugkey \
+            -keypass android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
+
       - name: Build Debug APK
         run: gradle assembleDebug --stacktrace
 
@@ -43,8 +52,15 @@ jobs:
           fi
           echo "APK vytvorený, velkost:"
           ls -lh "$APK_PATH"
-          echo "--- Kontrola podpisu ---"
-          jarsigner -verify "$APK_PATH" || echo "POZOR: jarsigner nenašiel podpis (skontroluj manuálne)"
+          echo "--- Kontrola podpisu (apksigner) ---"
+          APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner | sort -V | tail -1)
+          echo "Using apksigner: $APKSIGNER"
+          "$APKSIGNER" verify --verbose "$APK_PATH"
+          if [ $? -ne 0 ]; then
+            echo "CHYBA: APK NIE JE správne podpísaný!"
+            exit 1
+          fi
+          echo "✅ APK je správne podpísaný."
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
